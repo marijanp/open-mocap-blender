@@ -1,0 +1,6 @@
+result
+.direnv
+
+# Blender's embedded Python creates ordinary Python bytecode caches.
+__pycache__/
+*.py[cod]
