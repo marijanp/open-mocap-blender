@@ -1,0 +1,7 @@
+# The Python sources are stored with CRLF line endings, so Git must not treat
+# the carriage return as trailing whitespace.
+*.py whitespace=cr-at-eol
+
+# A unified diff marks an unchanged blank line with a single space, which Git
+# would otherwise report as trailing whitespace.
+nix/*.patch whitespace=-blank-at-eol

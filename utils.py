@@ -61,6 +61,73 @@ class MathUtility:
 
 
 # -------------------------------------------------------------
+# OPENCV PREVIEW WINDOW
+# -------------------------------------------------------------
+class PreviewWindow:
+    """OpenCV highgui preview window.
+
+    OpenCV builds without a GUI backend (common on Nix, where the packaged
+    OpenCV has no GTK/Qt/Cocoa support) raise on every window call. Tracking
+    itself does not need a window, so preview support is read from OpenCV's
+    build information and the window becomes a no-op when it is unavailable.
+
+    The build information is consulted rather than calling namedWindow, so
+    probing never opens a window: a headless or scripted invocation must not
+    create GUI windows on the user's display.
+    """
+    available = None
+
+    @staticmethod
+    def _supported():
+        if PreviewWindow.available is None:
+            value = "NONE"
+            for line in cv2.getBuildInformation().splitlines():
+                key, separator, reported = line.partition(":")
+                if separator and key.strip() == "GUI":
+                    value = reported.strip().upper()
+                    break
+            PreviewWindow.available = value != "NONE"
+            if not PreviewWindow.available:
+                print("OpenCV has no GUI backend; running without preview windows.")
+        return PreviewWindow.available
+
+    @classmethod
+    def open(cls, title):
+        if not cls._supported():
+            return
+        cv2.namedWindow(title, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(title, 640, 480)
+        cv2.moveWindow(title, 0, 0)
+
+    @classmethod
+    def visible(cls, title):
+        """True while the user still has the preview window open."""
+        if not cls._supported():
+            return True
+        try:
+            return cv2.getWindowProperty(title, cv2.WND_PROP_VISIBLE) >= 1
+        except cv2.error:
+            return False
+
+    @classmethod
+    def show(cls, title, img):
+        if not cls._supported():
+            return
+        cv2.imshow(title, img)
+        cv2.waitKey(1)
+
+    @classmethod
+    def close(cls, title):
+        if not cls._supported():
+            return
+        try:
+            cv2.destroyWindow(title)
+        except cv2.error:
+            pass
+
+
+
+# -------------------------------------------------------------
 # SOME USEFUL BLENDER UTILITIES
 # -------------------------------------------------------------
 class BlenderUtility:   
@@ -251,10 +318,8 @@ class PoseTracking:
                 gvar.fps = 30
             gvar.delay = 1.0 / gvar.fps
 
-            # Create OpenCV window
-            cv2.namedWindow("Pose Tracking", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("Pose Tracking", 640, 480)
-            cv2.moveWindow("Pose Tracking", 0, 0)
+            # Create OpenCV preview window
+            PreviewWindow.open("Pose Tracking")
 
             self.running = True
             bpy.app.timers.register(self.update_frame, first_interval=0.0)
@@ -270,7 +335,11 @@ class PoseTracking:
             return img
         
         if self.detector is None:
-            self.detector = PoseDetector()
+            # Synchronous inference: findPosition below reads the landmarks of
+            # the frame just passed to findPose. cvzone's background thread
+            # returns the previous frame's results instead, which shifts every
+            # captured frame by one and yields nothing for the first.
+            self.detector = PoseDetector(useThread=False)
 
         img = self.detector.findPose(img)
         height, width = img.shape[:2]
@@ -334,7 +403,7 @@ class PoseTracking:
 
         # Stop if the window was closed (for non-realtime)
         if self.mode != "rt_pose":
-            if cv2.getWindowProperty("Pose Tracking", cv2.WND_PROP_VISIBLE) < 1:
+            if not PreviewWindow.visible("Pose Tracking"):
                 self.stop()
                 return None
 
@@ -350,8 +419,7 @@ class PoseTracking:
             VideoPlaneManager.update_frame(img)
         else:
             # --- Video file: show in OpenCV window ---
-            cv2.imshow("Pose Tracking", img)
-            cv2.waitKey(1)
+            PreviewWindow.show("Pose Tracking", img)
 
         return gvar.delay
 
@@ -367,10 +435,7 @@ class PoseTracking:
         if self.mode == "rt_pose":
             VideoPlaneManager.remove_plane()
         else:
-            try:
-                cv2.destroyWindow("Pose Tracking")
-            except:
-                pass
+            PreviewWindow.close("Pose Tracking")
 
         # Stop animation playback if running
         if bpy.context.screen.is_animation_playing:
@@ -429,9 +494,7 @@ class HandTracking:
             if not gvar.fps or gvar.fps <= 0:
                 gvar.fps = 30
             gvar.delay = 1.0 / gvar.fps
-            cv2.namedWindow("Hand Tracking", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("Hand Tracking", 640, 480)
-            cv2.moveWindow("Hand Tracking", 0, 0)
+            PreviewWindow.open("Hand Tracking")
             self.running = True
             bpy.app.timers.register(self.update_frame, first_interval=0.0)
 
@@ -500,7 +563,7 @@ class HandTracking:
 
         # Stop if CV window closed
         if self.mode != "rt_hand":
-            if cv2.getWindowProperty("Hand Tracking", cv2.WND_PROP_VISIBLE) < 1:
+            if not PreviewWindow.visible("Hand Tracking"):
                 self.stop()
                 return None
 
@@ -511,8 +574,7 @@ class HandTracking:
 
         img = self.detect_hand(img)
 
-        cv2.imshow("Hand Tracking", img)
-        cv2.waitKey(1)
+        PreviewWindow.show("Hand Tracking", img)
         return gvar.delay
 
     def stop(self):
@@ -523,10 +585,7 @@ class HandTracking:
         if hasattr(self, 'cap') and self.cap.isOpened():
             self.cap.release()
         if self.mode != "rt_hand":
-            try:
-                cv2.destroyWindow("Hand Tracking")
-            except:
-                pass
+            PreviewWindow.close("Hand Tracking")
         return None
 
 

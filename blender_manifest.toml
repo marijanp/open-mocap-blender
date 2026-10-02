@@ -1,0 +1,28 @@
+schema_version = "1.0.0"
+
+id = "open_mocap"
+version = "1.1.0"
+name = "Open Mocap"
+tagline = "AI-powered motion capture"
+maintainer = "Larenju Rai <larenju23@gmail.com>"
+type = "add-on"
+website = "https://github.com/Larenju-Rai/open-mocap-blender"
+tags = ["Animation"]
+blender_version_min = "5.0.0"
+license = ["SPDX:MIT"]
+copyright = ["2025 Larenju Rai"]
+
+[permissions]
+files = "Import captured motion video files from disk"
+
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "*.zip",
+  "assets/",
+  "Test Videos/",
+  "nix/",
+  "npins/",
+  "docs/",
+  "*.md",
+]

@@ -1,29 +1,41 @@
 import bpy
 from . import globalVariables as gvar
-from .PackageInstaller import check_required_packages
+from .dependencies import missing_models, missing_packages
 
 
 
 # -------------------------------------------------------------
-# UI PANEL FOR INSTALLING DEPENDENCY PACKAGES
+# UI PANEL REPORTING DEPENDENCY STATUS
 # -------------------------------------------------------------
 class OpenMocapAddonPreferences(bpy.types.AddonPreferences):
     bl_idname = __package__
-    REQUIRED_PACKAGES = ["mediapipe", "opencv-python", "cvzone"]
 
     def draw(self, context):
+        """
+            Dependencies are supplied by the environment Blender runs in: the Nix
+            development shell provides mediapipe, cvzone and OpenCV on PYTHONPATH,
+            and points CVZONE_MODEL_DIR at the MediaPipe models. Installing into
+            Blenders bundled Python is not supported, because it is replaced on
+            every Blender upgrade.
+        """
         layout = self.layout
         col = layout.column(align=True)
-        col.label(text="Dependency Management", icon="PREFERENCES")
+        col.label(text="Dependency Status", icon="PREFERENCES")
 
-        missing = check_required_packages()
-
+        missing = missing_packages()
         if missing:
             col.label(text=f"Missing packages: {', '.join(missing)}", icon="ERROR")
-            col.operator("addon.install_dependencies", text="Install Dependencies", icon="CONSOLE")
-        else:
-            col.label(text="All dependencies are installed.", icon="CHECKMARK")
-            #col.operator("addon.uninstall_dependencies", text="Uninstall Dependencies", icon="TRASH")
+            col.label(text="Start Blender from the development shell.", icon="INFO")
+            return
+
+        models = missing_models()
+        if models:
+            col.label(text=f"Missing models: {', '.join(models)}", icon="ERROR")
+            col.label(text="Set CVZONE_MODEL_DIR to the model directory.", icon="INFO")
+            return
+
+        col.label(text="All dependencies are available.", icon="CHECKMARK")
+        col.operator("addon.dependency_status", text="Check Dependencies", icon="CONSOLE")
 
 
 
@@ -32,7 +44,7 @@ class OpenMocapAddonPreferences(bpy.types.AddonPreferences):
 # -------------------------------------------------------------
 class PoseTrackingPanel(bpy.types.Panel):
     bl_label = "Pose Tracking"
-    bl_idname = "Pose_Track_Panel"
+    bl_idname = "OPENMOCAP_PT_pose_tracking"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Open Mocap"
@@ -104,7 +116,7 @@ class PoseTrackingPanel(bpy.types.Panel):
 # -------------------------------------------------------------
 class HandTrackingPanel(bpy.types.Panel):
     bl_label = "Hand Tracking"
-    bl_idname = "Hand_Tracking_Panel"
+    bl_idname = "OPENMOCAP_PT_hand_tracking"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Open Mocap"

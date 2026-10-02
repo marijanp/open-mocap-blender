@@ -1,0 +1,104 @@
+Fixes for offline and packaged use of cvzone 2.0.0, which drives the MediaPipe
+Tasks API (the only MediaPipe API still present in 1.x):
+
+1. Models were downloaded into the current working directory on first use. The
+   location now comes from CVZONE_MODEL_DIR when it is set, and falls back to
+   the working directory otherwise, so the packaged case stays offline.
+2. When CVZONE_MODEL_DIR is set, a missing model is an error instead of a
+   download attempt: that directory is usually read-only, and silently trying
+   to write there gives an obscure failure much later.
+3. findHands reported handType "Unknown" for every hand because the Tasks API
+   carries handedness next to the landmarks. The add-on routes left/right hands
+   by that value, so use the real classification.
+4. findHands dropped the landmark depth, emitting [x, y, 0] where 1.6.1 emitted
+   [x, y, landmark.z * width]. The add-on reads that third value as the hand's
+   Z, so hand motion was flattened. Restore the 1.6.1 conversion, including its
+   integer rounding.
+--- a/cvzone/PoseModule.py
++++ b/cvzone/PoseModule.py
+@@ -31,7 +31,7 @@
+     """
+ 
+     MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+-    MODEL_NAME = "pose_landmarker.task"
++    MODEL_NAME = os.path.join(os.environ.get("CVZONE_MODEL_DIR", ""), "pose_landmarker.task")
+ 
+     def __init__(self,
+                  staticMode=False,
+@@ -83,10 +83,15 @@
+     # Model download
+     # ------------------------------------------------------------------
+     def _downloadModel(self):
+-        if not os.path.exists(self.MODEL_NAME):
+-            print("Downloading MediaPipe Pose model...")
+-            urllib.request.urlretrieve(self.MODEL_URL, self.MODEL_NAME)
+-            print("Download complete.")
++        if os.path.exists(self.MODEL_NAME):
++            return
++        if os.environ.get("CVZONE_MODEL_DIR"):
++            raise FileNotFoundError(
++                f"CVZONE_MODEL_DIR is set but does not contain {self.MODEL_NAME}"
++            )
++        print("Downloading MediaPipe Pose model...")
++        urllib.request.urlretrieve(self.MODEL_URL, self.MODEL_NAME)
++        print("Download complete.")
+ 
+     # ------------------------------------------------------------------
+     # Internal inference (can run on a worker thread)
+--- a/cvzone/HandTrackingModule.py
++++ b/cvzone/HandTrackingModule.py
+@@ -21,7 +21,7 @@
+     """
+ 
+     MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+-    MODEL_NAME = "hand_landmarker.task"
++    MODEL_NAME = os.path.join(os.environ.get("CVZONE_MODEL_DIR", ""), "hand_landmarker.task")
+ 
+     def __init__(self,
+                  staticMode=False,
+@@ -57,10 +57,15 @@
+     # Auto Download Model
+     # ---------------------------
+     def _downloadModel(self):
+-        if not os.path.exists(self.MODEL_NAME):
+-            print("Downloading MediaPipe Hand model...")
+-            urllib.request.urlretrieve(self.MODEL_URL, self.MODEL_NAME)
+-            print("Download complete.")
++        if os.path.exists(self.MODEL_NAME):
++            return
++        if os.environ.get("CVZONE_MODEL_DIR"):
++            raise FileNotFoundError(
++                f"CVZONE_MODEL_DIR is set but does not contain {self.MODEL_NAME}"
++            )
++        print("Downloading MediaPipe Hand model...")
++        urllib.request.urlretrieve(self.MODEL_URL, self.MODEL_NAME)
++        print("Download complete.")
+ 
+     # ---------------------------
+     # Main Function
+@@ -91,9 +96,9 @@
+ 
+                 for lm in hand_landmarks:
+ 
+-                    x, y = int(lm.x * w), int(lm.y * h)
++                    x, y, z = int(lm.x * w), int(lm.y * h), int(lm.z * w)
+ 
+-                    lmList.append([x, y, 0])
++                    lmList.append([x, y, z])
+                     xList.append(x)
+                     yList.append(y)
+ 
+@@ -105,8 +110,11 @@
+                 bbox = (xmin, ymin, boxW, boxH)
+                 cx, cy = xmin + boxW // 2, ymin + boxH // 2
+ 
+-                # Hand type not always provided reliably in Tasks API
+-                handType = "Unknown"
++                handType = (
++                    result.handedness[i][0].category_name
++                    if result.handedness
++                    else "Unknown"
++                )
+ 
+                 myHand["lmList"] = lmList
+                 myHand["bbox"] = bbox

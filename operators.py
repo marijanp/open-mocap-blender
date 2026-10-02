@@ -443,28 +443,53 @@ class BakeMotion(bpy.types.Operator):
             self.report({'ERROR'}, "Please select a valid Armature object")
             return {'CANCELLED'}
 
-        bpy.ops.object.mode_set(mode='POSE')
-
-        # Determine bones to bake
-        bones = (
-            [b for b in context.selected_pose_bones]
-            if self.only_selected_bones and context.selected_pose_bones
-            else obj.pose.bones
-        )
-
-        if not bones:
-            self.report({'ERROR'}, "No bones found to bake")
+        if self.frame_start < 1 or self.frame_end < self.frame_start:
+            self.report({'ERROR'}, "Invalid frame range")
             return {'CANCELLED'}
+
+        if not obj.pose.bones:
+            self.report({'ERROR'}, "The selected rig has no bones")
+            return {'CANCELLED'}
+
+        # Read the selection off the target rig rather than from
+        # context.selected_pose_bones, which is empty until the rig is the active
+        # object in pose mode and so cannot answer this before the rig is made
+        # current. BakeMotion below restores the original selection.
+        selected = [pb for pb in obj.pose.bones if pb.select]
+
+        if self.only_selected_bones:
+            if not selected:
+                # Baking every bone because the user selected none would write
+                # keys over motion they did not ask to bake.
+                self.report({'ERROR'}, "No bones selected in Pose Mode")
+                return {'CANCELLED'}
+            bones = selected
+        else:
+            bones = list(obj.pose.bones)
+
+        original_selection = {pb.name: pb.select for pb in obj.pose.bones}
 
         self.report({'INFO'}, f"Baking motion for {len(bones)} bone(s)...")
 
-        # Deselect all bones
-        for pb in obj.pose.bones:
-            pb.bone.select = False
-        for pb in bones:
-            pb.bone.select = True
+        # Leave any current mode before switching the active object: assigning
+        # view_layer.objects.active while another object is in Pose or Edit mode
+        # drops that mode implicitly.
+        if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
 
-        # Perform bake
+        for other in list(context.selected_objects):
+            other.select_set(False)
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode='POSE')
+
+        # Blender 5 removed PoseBone.bone.select, so selection is set on the
+        # PoseBone itself.
+        for pb in obj.pose.bones:
+            pb.select = False
+        for pb in bones:
+            pb.select = True
+
         bpy.ops.nla.bake(
             frame_start=self.frame_start,
             frame_end=self.frame_end,
@@ -474,6 +499,9 @@ class BakeMotion(bpy.types.Operator):
             use_current_action=True,
             bake_types={'POSE'}
         )
+
+        for pb in obj.pose.bones:
+            pb.select = original_selection[pb.name]
 
         self.report({'INFO'}, "Baking complete.")
         return {'FINISHED'}

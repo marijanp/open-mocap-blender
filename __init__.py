@@ -1,8 +1,8 @@
 bl_info = {
     "name": "Open Mocap",
     "author": "Larenju Rai",
-    "version": (1, 0, 0),
-    "blender": (4, 0, 0),
+    "version": (1, 1, 0),
+    "blender": (5, 0, 0),
     "location": "View3D > Tools",
     "doc_url": "https://github.com/Larenju-Rai/open-mocap-blender",
     "category": "Animation",
@@ -11,9 +11,9 @@ bl_info = {
 
 
 import bpy
-from . import PackageInstaller, operators, panels
+from . import dependencies, operators, panels
 
-classes = PackageInstaller.classes + operators.classes + panels.classes
+classes = dependencies.classes + operators.classes + panels.classes
 
 
 
